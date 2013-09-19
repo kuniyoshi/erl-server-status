@@ -8,18 +8,31 @@
          terminate/2,
          code_change/3]).
 -define(SERVER, ?MODULE).
+-include("include/server_status.hrl").
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-init(Args) ->
+init([] = Args) ->
     {ok, Args}.
 
+handle_call(state_dump, _From, State) ->
+    {reply, State, State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast({working, Pid, Query}, State) ->
+    State2 = lists:keystore(Pid, 1, State, {Pid, Query}),
+    {noreply, State2};
+handle_cast({done, Pid}, State) ->
+    Query = proplists:get_value(Pid, State),
+    Now   = now(),
+    Query2 = Query#server_status{state = done,
+                                 ended_at = Now,
+                                 wall_clock_us = timer:now_diff(Now,
+                                                                Query#server_status.started_at)},
+    State2 = lists:keystore(Pid, 1, State, {Pid, Query2}),
+    {noreply, State2}.
 
 handle_info(_Info, State) ->
     {noreply, State}.
