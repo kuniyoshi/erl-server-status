@@ -9,6 +9,7 @@
          code_change/3]).
 -define(SERVER, ?MODULE).
 -include("include/server_status.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).

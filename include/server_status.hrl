@@ -6,5 +6,6 @@
          wall_clock_us :: timer:now_diff(),
          host :: binary(),
          port :: integer(),
+         host_port :: binary(),
          path :: binary(),
          query_string :: binary()}).
