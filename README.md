@@ -11,6 +11,7 @@ SYNOPSIS
                                     {query_string, <<>>]).
     > server_status_client:done().
     > server_status_client:state_dump().
+    > server_status_client:text_state_dump().
 
 GOAL
 ====
