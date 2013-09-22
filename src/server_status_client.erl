@@ -4,6 +4,19 @@
 -include("include/server_status.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -define(WORKER, server_status_worker).
+-define(NUM_WIDTH, 32).
+-define(PID_HEADING, "PID").
+-define(STATE_HEADING, "State").
+-define(STARTED_AT_HEADING, "Started at").
+-define(ENDED_AT_HEADING, "Ended at").
+-define(WALL_CLOCK_US_HEADING, "Wall clock [s]").
+-define(HOST_HEADING, "Host").
+-define(PORT_HEADING, "Port").
+-define(HOST_PORT_HEADING, "Host:Port").
+-define(PATH_HEADING, "Path").
+-define(QUERY_STRING_HEADING, "Query String").
+
+-compile(export_all).
 
 working([{host, Host}, {port, Port}, {path, Path}, {query_string, QueryString}]) ->
     Query = #server_status{pid = self(),
@@ -28,6 +41,9 @@ done() ->
 state_dump() ->
     gen_server:call(?WORKER, state_dump).
 
+flatten_format(Format, Paddings) ->
+    lists:flatten(io_lib:format(Format, Paddings)).
+
 get_field(pid,              #server_status{pid = R})            -> R;
 get_field(state,            #server_status{state = R})          -> R;
 get_field(started_at,       #server_status{started_at = R})     -> R;
@@ -42,13 +58,15 @@ get_field(query_string,     #server_status{query_string = R})   -> R.
 to_string(Value) when is_pid(Value) ->
     pid_to_list(Value);
 to_string(Value) when is_tuple(Value) ->
-    {{Y, Mon, D}, {H, Min, S}} = calendar:now_to_local_time(Value),
-    String = integer_to_list(Y) ++ "-" ++ integer_to_list(Mon) ++ "-" ++ integer_to_list(D)
-             ++ " "
-             ++ io_lib:format("~2w", [H]) ++ io_lib:format("~2w", [Min]) ++ io_lib:format("~2w", [S]),
-    lists:flatten(String);
+    {_Ymd, Hms} = calendar:now_to_local_time(Value),
+    String = string:join(lists:foldr(fun(I, L) ->
+                                         [flatten_format("~2.2. w", [I]) | L]
+                                     end,
+                                     [],
+                                     tuple_to_list(Hms)), ":"),
+    String;
 to_string(Value) when is_integer(Value) ->
-    io_lib:format("~6.2. f", [Value / 1.0E6]);
+    flatten_format("~6.2. f", [Value / 1.0E6]);
 to_string(Value) when is_list(Value) ->
     Value;
 to_string(Value) when is_binary(Value) ->
@@ -56,7 +74,14 @@ to_string(Value) when is_binary(Value) ->
 to_string(Value) when is_atom(Value) ->
     atom_to_list(Value);
 to_string(Value) ->
-    io_lib:format("~p", [Value]).
+    flatten_format("~p", [Value]).
+
+now_to_local_time(Now) ->
+    {Ymd, Hms} = calendar:now_to_local_time(Now),
+    String = string:join([integer_to_list(X) || X <- tuple_to_list(Ymd)], "-")
+             ++ " "
+             ++ string:join([integer_to_list(X) || X <- tuple_to_list(Hms)], ":"),
+    String.
 
 server_status_to_host_port(#server_status{host = undefined, port = undefined}) ->
     "undefined:undefined";
@@ -69,31 +94,31 @@ calc_mean(Nums) ->
     lists:sum(Nums) / length(Nums).
 
 get_float_format(MaxWidth) ->
-    Format = io_lib:format("~~.~w. s~~~w.2. f", [32, MaxWidth]),
-    lists:flatten(Format).
+    Format = flatten_format("~~.~w. s~~~w.2. f", [?NUM_WIDTH, MaxWidth]),
+    Format.
 
 get_int_format(MaxWidth) ->
-    Format = io_lib:format("~~.~w. s~~~w.2. w", [32, MaxWidth]),
-    lists:flatten(Format).
+    Format = flatten_format("~~.~w. s~~~w.2. w", [?NUM_WIDTH, MaxWidth]),
+    Format.
 
 format_count_summary(count_of_all, Count, MaxWidth) ->
     Defininition = "- count of all processes: ",
-    io_lib:format(get_int_format(MaxWidth), [Defininition, Count]);
+    flatten_format(get_int_format(MaxWidth), [Defininition, Count]);
 format_count_summary(count_of_working, Count, MaxWidth) ->
     Defininition = "- count of working: ",
-    io_lib:format(get_int_format(MaxWidth), [Defininition, Count]);
+    flatten_format(get_int_format(MaxWidth), [Defininition, Count]);
 format_count_summary(count_of_waiting, Count, MaxWidth) ->
     Defininition = "- count of waiting: ",
-    io_lib:format(get_int_format(MaxWidth), [Defininition, Count]);
+    flatten_format(get_int_format(MaxWidth), [Defininition, Count]);
 format_count_summary(mean_of_working, Count, MaxWidth) ->
     Defininition = "- mean of working: ",
-    io_lib:format(get_float_format(MaxWidth), [Defininition, Count]);
+    flatten_format(get_float_format(MaxWidth), [Defininition, Count]);
 format_count_summary(mean_of_worked, Count, MaxWidth) ->
     Defininition = "- mean of worked: ",
-    io_lib:format(get_float_format(MaxWidth), [Defininition, Count]);
+    flatten_format(get_float_format(MaxWidth), [Defininition, Count]);
 format_count_summary(mean_of_both, Count, MaxWidth) ->
     Defininition = "- mean of both: ",
-    io_lib:format(get_float_format(MaxWidth), [Defininition, Count]).
+    flatten_format(get_float_format(MaxWidth), [Defininition, Count]).
 
 format_table(Columns) ->
     SwitchFormat = fun(Value) when is_number(Value) ->
@@ -101,56 +126,63 @@ format_table(Columns) ->
         (_) ->
             "~~-~ws"
     end,
-    Columns2 = [{S, io_lib:format(SwitchFormat(V), [W])} || {S, W, V} <- Columns],
-    Columns3 = [io_lib:format(lists:flatten(F), [S]) || {S, F} <- Columns2],
+    Columns2 = [{S, flatten_format(SwitchFormat(V), [W])} || {S, W, V} <- Columns],
+    Columns3 = [flatten_format(F, [S]) || {S, F} <- Columns2],
     Row = "| " ++ string:join([C || C <- Columns3], " | ") ++ " |",
     Row.
 
 format_process(P, WidthRecord) when is_record(P, server_status) ->
     Fields = [F || F <- record_info(fields, server_status), get_field(F, WidthRecord) =/= undefined],
-    Formatted = format_table([{to_string(get_field(F, P)), get_field(F, WidthRecord), get_field(F, P)} || F <- Fields]),
+    Formatted = format_table([{to_string(get_field(F, P)),
+                               get_field(F, WidthRecord),
+                               get_field(F, P)}
+                              || F <- Fields]),
     Formatted.
 
+horizontal_line(L) ->
+    "|-" ++ string:join([string:copies("-", W) || W <- L], "-+-") ++ "-|".
+
 text_state_dump() ->
-    Statuses = [S || {_Pid, S} <- state_dump()],
+    States = [S || {_Pid, S} <- state_dump()],
     Now = now(),
-    Localtime = to_string(Now),
-    CountOfAll = length(proplists:get_keys(Statuses)),
-    CountOfWorking = length([S || S <- Statuses, S#server_status.state =:= working]),
-    CountOfWaiting = length([S || S <- Statuses, S#server_status.state =:= done]
-                            ++ [S || S <- Statuses, S#server_status.state =:= undefined]),
-    Statuses2 = lists:map(fun(#server_status{state = working} = S) ->
-                                  S#server_status{wall_clock_us = timer:now_diff(Now, S#server_status.started_at)};
-                             (S) ->
-                                  S
-                          end,
-                          Statuses),
+    Localtime = now_to_local_time(Now),
+    CountOfAll = length(States),
+    CountOfWorking = length([S || S <- States, S#server_status.state =:= working]),
+    CountOfWaiting = length([S || S <- States, S#server_status.state =:= done])
+                     + length([S || S <- States, S#server_status.state =:= undefined]),
+    States2 = lists:map(fun(#server_status{state = working} = S) ->
+                            S#server_status{wall_clock_us = timer:now_diff(Now, S#server_status.started_at)};
+                        (S) ->
+                            S
+                        end,
+                        States),
     MeanOfWorking = calc_mean([S#server_status.wall_clock_us
-                               || S <- Statuses2, S#server_status.state =:= working]),
+                               || S <- States2, S#server_status.state =:= working]),
     WorkingMeanSeconds = MeanOfWorking / 1.0E6,
     MeanOfWorked = calc_mean([S#server_status.wall_clock_us
-                              || S <- Statuses2, S#server_status.state =:= done]),
+                              || S <- States2, S#server_status.state =:= done]),
     WorkedMeanSeconds = MeanOfWorked / 1.0E6,
     MeanOfBoth = calc_mean([X || X <- [MeanOfWorking, MeanOfWorked], X > 0]),
     BothMeanSeconds = MeanOfBoth / 1.0E6,
-    PidWidth = lists:max([length(pid_to_list(P)) || #server_status{pid = P} <- Statuses2]),
-    StateWidth = lists:max([length(X) || X <- ["working", "done", "undefined"]]),
-    StartedAtWidth = lists:max([length(X) || X <- ["started at", "03:07:36"]]),
-    EndedAtWidth = lists:max([length(X) || X <- ["ended at", "03:07:59"]]),
-    WallclockWidth = length("wallclock [s]"),
-    HostPortWidth = lists:max([length(server_status_to_host_port(S)) || S <- Statuses2]),
-    PathWidth = lists:max([length(binary_to_list(S#server_status.path))
-                           || S <- Statuses2]),
-    QueryWidth = lists:max([length(binary_to_list(S#server_status.query_string))
-                            || S <- Statuses2]),
-%%     ?debugVal([PidWidth, StateWidth, StartedAtWidth, EndedAtWidth, WallclockWidth, HostPortWidth, PathWidth, QueryWidth]),
-%%     CountWidth = lists:max([byte_size(integer_to_binary(X))
-%%                             || X <- [CountOfAll, CountOfWorking, CountOfWaiting, MeanOfWorking, MeanOfWorked, MeanOfBoth]]),
+    PidWidth = lists:max([length(X)
+                          || X <- [?PID_HEADING | [to_string(P) || #server_status{pid = P} <- States2]]]),
+    StateWidth = lists:max([length(X)
+                            || X <- [?STATE_HEADING | ["working", "done", "undefined"]]]),
+    StartedAtWidth = lists:max([length(?STARTED_AT_HEADING), length(to_string(Now))]),
+    EndedAtWidth = lists:max([length(?ENDED_AT_HEADING), length(to_string(Now))]),
+    WallclockWidth = length(?WALL_CLOCK_US_HEADING), % Wall clock heading is always longer than body.
+    HostPortWidth = lists:max([length(X)
+                               || X <- [?HOST_PORT_HEADING | [server_status_to_host_port(S) || S <- States2]]]),
+    PathWidth = lists:max([length(X)
+                           || X <- [?PATH_HEADING | [to_string(P) || #server_status{path = P} <- States2]]]),
+    QueryWidth = lists:max([length(X)
+                            || X <- [?QUERY_STRING_HEADING | [to_string(Q) || #server_status{query_string = Q} <- States2]]]),
     CountWidth = 6,
+    Widths = [PidWidth, StateWidth, StartedAtWidth, EndedAtWidth, WallclockWidth, HostPortWidth, PathWidth, QueryWidth],
     Lines = ["SERVER STATUS",
              string:copies("=", length("SERVER STATUS")),
              "",
-             io_lib:format("Dumped at ~s", [Localtime]),
+             flatten_format("Dumped at ~s", [Localtime]),
              "",
              "SUMMARY",
              string:copies("=", length("SUMMARY")),
@@ -165,15 +197,7 @@ text_state_dump() ->
              "LIST PROCESSES",
              string:copies("=", length("LIST PROCESSES")),
              "",
-             "+-" ++ string:join([string:copies("-", W)
-                                 || W<- [PidWidth,
-                                         StateWidth,
-                                         StartedAtWidth,
-                                         EndedAtWidth,
-                                         WallclockWidth,
-                                         HostPortWidth,
-                                         PathWidth,
-                                         QueryWidth]], "-+-") ++ "-+",
+             horizontal_line(Widths),
              format_table([{"PID", PidWidth, ""},
                            {"State", StateWidth, ""},
                            {"Started at", StartedAtWidth, ""},
@@ -182,15 +206,7 @@ text_state_dump() ->
                            {"Host:Port", HostPortWidth, ""},
                            {"Path", PathWidth, ""},
                            {"Query", QueryWidth, ""}]),
-             "+-" ++ string:join([string:copies("-", W)
-                                 || W<- [PidWidth,
-                                         StateWidth,
-                                         StartedAtWidth,
-                                         EndedAtWidth,
-                                         WallclockWidth,
-                                         HostPortWidth,
-                                         PathWidth,
-                                         QueryWidth]], "-+-") ++ "-+"],
+             horizontal_line(Widths)],
     WidthRecord = #server_status{pid = PidWidth,
                                  state = StateWidth,
                                  started_at = StartedAtWidth,
@@ -199,19 +215,9 @@ text_state_dump() ->
                                  host_port = HostPortWidth,
                                  path = PathWidth,
                                  query_string = QueryWidth},
-    Lines2 = [format_process(S, WidthRecord) || S <- Statuses2],
-    Lines3 = Lines ++ Lines2
-             ++ ["+-" ++ string:join([string:copies("-", W)
-                                      || W<- [PidWidth,
-                                              StateWidth,
-                                              StartedAtWidth,
-                                              EndedAtWidth,
-                                              WallclockWidth,
-                                              HostPortWidth,
-                                              PathWidth,
-                                              QueryWidth]], "-+-") ++ "-+",
-                 ""],
-    lists:flatten(string:join(Lines3, "\n")).
+    Lines2 = [format_process(S, WidthRecord) || S <- States2],
+    Lines3 = Lines ++ Lines2 ++ [horizontal_line(Widths)] ++ [""],
+    string:join(Lines3, "\n").
 
 %% SERVER STATUS
 %% =============
