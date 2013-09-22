@@ -112,39 +112,37 @@ format_process(P, WidthRecord) when is_record(P, server_status) ->
     Formatted.
 
 text_state_dump() ->
-    States = [S || {_Pid, S} <- state_dump()],
-    Localtime = string:join([string:join([integer_to_list(X) || X <- tuple_to_list(date())], "-"),
-                             string:join([integer_to_list(X) || X <- tuple_to_list(time())], ":")],
-                            " "),
-    CountOfAll = length(proplists:get_keys(States)),
-    CountOfWorking = length([S || S <- States, S#server_status.state =:= working]),
-    CountOfWaiting = length([S || S <- States, S#server_status.state =:= done]
-                            ++ [S || S <- States, S#server_status.state =:= undefined]),
+    Statuses = [S || {_Pid, S} <- state_dump()],
     Now = now(),
-    States2 = lists:map(fun(#server_status{state = working} = S) ->
-                                S#server_status{wall_clock_us = timer:now_diff(Now, S#server_status.started_at)};
-                           (S) ->
-                                S
-                        end,
-                        States),
+    Localtime = to_string(Now),
+    CountOfAll = length(proplists:get_keys(Statuses)),
+    CountOfWorking = length([S || S <- Statuses, S#server_status.state =:= working]),
+    CountOfWaiting = length([S || S <- Statuses, S#server_status.state =:= done]
+                            ++ [S || S <- Statuses, S#server_status.state =:= undefined]),
+    Statuses2 = lists:map(fun(#server_status{state = working} = S) ->
+                                  S#server_status{wall_clock_us = timer:now_diff(Now, S#server_status.started_at)};
+                             (S) ->
+                                  S
+                          end,
+                          Statuses),
     MeanOfWorking = calc_mean([S#server_status.wall_clock_us
-                               || S <- States2, S#server_status.state =:= working]),
+                               || S <- Statuses2, S#server_status.state =:= working]),
     WorkingMeanSeconds = MeanOfWorking / 1.0E6,
     MeanOfWorked = calc_mean([S#server_status.wall_clock_us
-                              || S <- States2, S#server_status.state =:= done]),
+                              || S <- Statuses2, S#server_status.state =:= done]),
     WorkedMeanSeconds = MeanOfWorked / 1.0E6,
     MeanOfBoth = calc_mean([X || X <- [MeanOfWorking, MeanOfWorked], X > 0]),
     BothMeanSeconds = MeanOfBoth / 1.0E6,
-    PidWidth = lists:max([length(pid_to_list(P)) || #server_status{pid = P} <- States2]),
+    PidWidth = lists:max([length(pid_to_list(P)) || #server_status{pid = P} <- Statuses2]),
     StateWidth = lists:max([length(X) || X <- ["working", "done", "undefined"]]),
     StartedAtWidth = lists:max([length(X) || X <- ["started at", "03:07:36"]]),
     EndedAtWidth = lists:max([length(X) || X <- ["ended at", "03:07:59"]]),
     WallclockWidth = length("wallclock [s]"),
-    HostPortWidth = lists:max([length(server_status_to_host_port(S)) || S <- States2]),
+    HostPortWidth = lists:max([length(server_status_to_host_port(S)) || S <- Statuses2]),
     PathWidth = lists:max([length(binary_to_list(S#server_status.path))
-                           || S <- States2]),
+                           || S <- Statuses2]),
     QueryWidth = lists:max([length(binary_to_list(S#server_status.query_string))
-                            || S <- States2]),
+                            || S <- Statuses2]),
 %%     ?debugVal([PidWidth, StateWidth, StartedAtWidth, EndedAtWidth, WallclockWidth, HostPortWidth, PathWidth, QueryWidth]),
 %%     CountWidth = lists:max([byte_size(integer_to_binary(X))
 %%                             || X <- [CountOfAll, CountOfWorking, CountOfWaiting, MeanOfWorking, MeanOfWorked, MeanOfBoth]]),
@@ -201,7 +199,7 @@ text_state_dump() ->
                                  host_port = HostPortWidth,
                                  path = PathWidth,
                                  query_string = QueryWidth},
-    Lines2 = [format_process(S, WidthRecord) || S <- States2],
+    Lines2 = [format_process(S, WidthRecord) || S <- Statuses2],
     Lines3 = Lines ++ Lines2
              ++ ["+-" ++ string:join([string:copies("-", W)
                                       || W<- [PidWidth,
