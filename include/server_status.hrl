@@ -4,8 +4,6 @@
          started_at :: erlang:timestamp(),
          ended_at :: erlang:timestamp(),
          wall_clock_us :: timer:now_diff(),
-         host :: binary(),
-         port :: integer(),
-         host_port :: binary(),
+         code :: integer(),
          path :: binary(),
          query_string :: binary()}).

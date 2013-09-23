@@ -14,34 +14,45 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-init([] = Args) ->
-    {ok, Args}.
+init([] = Workers) ->
+    {ok, Workers}.
 
-handle_call(state_dump, _From, State) ->
-    {reply, State, State};
-handle_call(clear, _From, _State) ->
+handle_call(state_dump, _From, Workers) ->
+    {reply, Workers, Workers};
+handle_call(clear, _From, _Workers) ->
     {reply, ok, []};
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+handle_call(_Request, _From, Workers) ->
+    {reply, ok, Workers}.
 
-handle_cast({working, Pid, Query}, State) ->
-    State2 = lists:keystore(Pid, 1, State, {Pid, Query}),
-    {noreply, State2};
-handle_cast({done, Pid}, State) ->
-    Query = proplists:get_value(Pid, State),
-    Now   = now(),
-    Query2 = Query#server_status{state = done,
-                                 ended_at = Now,
-                                 wall_clock_us = timer:now_diff(Now,
-                                                                Query#server_status.started_at)},
-    State2 = lists:keystore(Pid, 1, State, {Pid, Query2}),
-    {noreply, State2}.
+handle_cast({working, Pid, Worker}, Workers) ->
+    Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker}),
+    {noreply, Workers2};
+handle_cast({done, Pid}, Workers) ->
+    Worker = proplists:get_value(Pid, Workers),
+    Now = now(),
+    Worker2 = Worker#server_status{state = done,
+                                   ended_at = Now,
+                                   wall_clock_us = timer:now_diff(Now,
+                                                                  Worker#server_status.started_at)},
+    Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker2}),
+    {noreply, Workers2};
+handle_cast({done_with, Code, Pid}, Workers) ->
+    ?debugVal(Code),
+    ?debugVal(Pid),
+    ?debugVal(Workers),
+    Worker = proplists:get_value(Pid, Workers),
+    ?debugVal(Worker),
+    Worker2 = Worker#server_status{code = Code},
+    ?debugVal(Worker2),
+    Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker2}),
+    ?debugVal(Workers2),
+    {noreply, Workers2}.
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(_Info, Workers) ->
+    {noreply, Workers}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, _Workers) ->
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, Workers, _Extra) ->
+    {ok, Workers}.

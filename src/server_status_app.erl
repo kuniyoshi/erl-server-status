@@ -5,5 +5,5 @@
 start(_StartType, _StartArgs) ->
     server_status_sup:start_link().
 
-stop(_State) ->
+stop(_Workers) ->
     ok.
