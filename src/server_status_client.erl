@@ -1,6 +1,6 @@
 -module(server_status_client).
 -export([working/1, done/0, done_with/1, clear/0]).
--export([started_at/0, wall_clock_us/0, code/0]).
+-export([my_state/0, started_at/1, wall_clock_us/1, code/1]).
 -export([state_dump/0, text_state_dump/0]).
 -include("include/server_status.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -41,19 +41,14 @@ state_dump() ->
 clear() ->
     gen_server:call(?WORKER, clear).
 
-get_my_state() ->
+my_state() ->
     Workers = state_dump(),
     Worker = proplists:get_value(self(), Workers),
     Worker.
 
-started_at() ->
-    (get_my_state())#server_status.started_at.
-
-wall_clock_us() ->
-    (get_my_state())#server_status.wall_clock_us.
-
-code() ->
-    (get_my_state())#server_status.code.
+started_at(Worker)      -> get_field(started_at, Worker).
+wall_clock_us(Worker)   -> get_field(wall_clock_us, Worker).
+code(Worker)            -> get_field(code, Worker).
 
 flatten_format(Format, Paddings) ->
     lists:flatten(io_lib:format(Format, Paddings)).
