@@ -16,7 +16,7 @@
 -define(PATH_HEADING, "Path").
 -define(QUERY_STRING_HEADING, "Query String").
 
--compile(export_all).
+%% -compile(export_all).
 
 working([{host, Host}, {port, Port}, {path, Path}, {query_string, QueryString}]) ->
     Query = #server_status{pid = self(),
