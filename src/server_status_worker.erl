@@ -37,15 +37,9 @@ handle_cast({done, Pid}, Workers) ->
     Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker2}),
     {noreply, Workers2};
 handle_cast({done_with, Code, Pid}, Workers) ->
-    ?debugVal(Code),
-    ?debugVal(Pid),
-    ?debugVal(Workers),
     Worker = proplists:get_value(Pid, Workers),
-    ?debugVal(Worker),
     Worker2 = Worker#server_status{code = Code},
-    ?debugVal(Worker2),
     Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker2}),
-    ?debugVal(Workers2),
     {noreply, Workers2}.
 
 handle_info(_Info, Workers) ->

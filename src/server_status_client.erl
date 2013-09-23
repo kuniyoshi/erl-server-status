@@ -1,6 +1,6 @@
 -module(server_status_client).
 -export([working/1, done/0, done_with/1, clear/0]).
--export([started_at/0, wall_clock_us/0]).
+-export([started_at/0, wall_clock_us/0, code/0]).
 -export([state_dump/0, text_state_dump/0]).
 -include("include/server_status.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -52,6 +52,9 @@ started_at() ->
 wall_clock_us() ->
     (get_my_state())#server_status.wall_clock_us.
 
+code() ->
+    (get_my_state())#server_status.code.
+
 flatten_format(Format, Paddings) ->
     lists:flatten(io_lib:format(Format, Paddings)).
 
@@ -64,27 +67,6 @@ get_field(code,             #server_status{code = R})           -> R;
 get_field(path,             #server_status{path = R})           -> R;
 get_field(query_string,     #server_status{query_string = R})   -> R.
 
-to_string(Value) when is_pid(Value) ->
-    pid_to_list(Value);
-to_string(Value) when is_tuple(Value) ->
-    {_Ymd, Hms} = calendar:now_to_local_time(Value),
-    String = string:join(lists:foldr(fun(I, L) ->
-                                         [flatten_format("~2.2. w", [I]) | L]
-                                     end,
-                                     [],
-                                     tuple_to_list(Hms)), ":"),
-    String;
-to_string(Value) when is_integer(Value) ->
-    flatten_format("~6.2. f", [Value / 1.0E6]);
-to_string(Value) when is_list(Value) ->
-    Value;
-to_string(Value) when is_binary(Value) ->
-    binary_to_list(Value);
-to_string(Value) when is_atom(Value) ->
-    atom_to_list(Value);
-to_string(Value) ->
-    flatten_format("~p", [Value]).
-
 now_to_local_time(Now) ->
     {Ymd, Hms} = calendar:now_to_local_time(Now),
     String = string:join([integer_to_list(X) || X <- tuple_to_list(Ymd)], "-")
@@ -96,6 +78,34 @@ calc_mean([]) ->
     0;
 calc_mean(Nums) ->
     lists:sum(Nums) / length(Nums).
+
+now_to_time(Now) ->
+    {_Ymd, Hms} = calendar:now_to_local_time(Now),
+    String = string:join(lists:foldr(fun(I, L) ->
+                                         [flatten_format("~2.2. w", [I]) | L]
+                                     end,
+                                     [],
+                                     tuple_to_list(Hms)), ":"),
+    String.
+
+to_string(undefined, _Field) ->
+    "undefined";
+to_string(Pid, pid) ->
+    pid_to_list(Pid);
+to_string(State, state) ->
+    atom_to_list(State);
+to_string(StartedAt, started_at) ->
+    now_to_time(StartedAt);
+to_string(EndedAt, ended_at) ->
+    now_to_time(EndedAt);
+to_string(WallClockUs, wall_clock_us) ->
+    flatten_format("~6.2. f", [WallClockUs / 1.0E6]);
+to_string(Code, code) ->
+    integer_to_list(Code);
+to_string(Path, path) ->
+    binary_to_list(Path);
+to_string(QueryString, query_string) ->
+    binary_to_list(QueryString).
 
 get_float_format(MaxWidth) ->
     Format = flatten_format("~~.~w. s~~~w.2. f", [?NUM_WIDTH, MaxWidth]),
@@ -124,6 +134,9 @@ format_count_summary(mean_of_both, Count, MaxWidth) ->
     Defininition = "- mean of both: ",
     flatten_format(get_float_format(MaxWidth), [Defininition, Count]).
 
+horizontal_line(L) ->
+    "|-" ++ string:join([string:copies("-", W) || W <- L], "-+-") ++ "-|".
+
 format_table(Columns) ->
     SwitchFormat = fun(Value) when is_number(Value) ->
             "~~~ws";
@@ -135,19 +148,16 @@ format_table(Columns) ->
     Row = "| " ++ string:join([C || C <- Columns3], " | ") ++ " |",
     Row.
 
-format_process(P, WidthRecord) when is_record(P, server_status) ->
-    Fields = [F || F <- record_info(fields, server_status), get_field(F, WidthRecord) =/= undefined],
-    Formatted = format_table([{to_string(get_field(F, P)),
-                               get_field(F, WidthRecord),
-                               get_field(F, P)}
-                              || F <- Fields]),
+format_process(Worker, Widths) when is_record(Worker, server_status) ->
+    Names = [K || {K, _V} <- Widths],
+    Formatted = format_table([{to_string(get_field(N, Worker), N),
+                               proplists:get_value(N, Widths),
+                               get_field(N, Worker)}
+                              || N <- Names]),
     Formatted.
 
-horizontal_line(L) ->
-    "|-" ++ string:join([string:copies("-", W) || W <- L], "-+-") ++ "-|".
-
 text_state_dump() ->
-    Workers = [S || {_Pid, S} <- state_dump()],
+    Workers = [W || {_Pid, W} <- state_dump()],
     Now = now(),
     Localtime = now_to_local_time(Now),
     CountOfAll = length(Workers),
@@ -169,19 +179,26 @@ text_state_dump() ->
     MeanOfBoth = calc_mean([X || X <- [MeanOfWorking, MeanOfWorked], X > 0]),
     BothMeanSeconds = MeanOfBoth / 1.0E6,
     PidWidth = lists:max([length(X)
-                          || X <- [?PID_HEADING | [to_string(P) || #server_status{pid = P} <- Workers2]]]),
+                          || X <- [?PID_HEADING | [to_string(P, pid) || #server_status{pid = P} <- Workers2]]]),
     StateWidth = lists:max([length(X)
                             || X <- [?STATE_HEADING | ["working", "done", "undefined"]]]),
-    StartedAtWidth = lists:max([length(?STARTED_AT_HEADING), length(to_string(Now))]),
-    EndedAtWidth = lists:max([length(?ENDED_AT_HEADING), length(to_string(Now))]),
-    WallclockWidth = length(?WALL_CLOCK_US_HEADING), % Wall clock heading is always longer than body.
+    StartedAtWidth = lists:max([length(?STARTED_AT_HEADING), length(to_string(Now, started_at))]),
+    EndedAtWidth = lists:max([length(?ENDED_AT_HEADING), length(to_string(Now, ended_at))]),
+    WallClockWidth = length(?WALL_CLOCK_US_HEADING), % Wall clock heading is always longer than body.
     CodeWidth = lists:max([length(?CODE_HEADING), length("undefined")]),
     PathWidth = lists:max([length(X)
-                           || X <- [?PATH_HEADING | [to_string(P) || #server_status{path = P} <- Workers2]]]),
+                           || X <- [?PATH_HEADING | [to_string(P, path) || #server_status{path = P} <- Workers2]]]),
     QueryWidth = lists:max([length(X)
-                            || X <- [?QUERY_STRING_HEADING | [to_string(Q) || #server_status{query_string = Q} <- Workers2]]]),
+                            || X <- [?QUERY_STRING_HEADING | [to_string(Q, query_string) || #server_status{query_string = Q} <- Workers2]]]),
     CountWidth = 6,
-    Widths = [PidWidth, StateWidth, StartedAtWidth, EndedAtWidth, WallclockWidth, CodeWidth, PathWidth, QueryWidth],
+    Widths = [{pid, PidWidth},
+              {state, StateWidth},
+              {started_at, StartedAtWidth},
+              {ended_at, EndedAtWidth},
+              {wall_clock_us, WallClockWidth},
+              {code, CodeWidth},
+              {path, PathWidth},
+              {query_string, QueryWidth}],
     Lines = ["SERVER STATUS",
              string:copies("=", length("SERVER STATUS")),
              "",
@@ -200,26 +217,18 @@ text_state_dump() ->
              "LIST PROCESSES",
              string:copies("=", length("LIST PROCESSES")),
              "",
-             horizontal_line(Widths),
+             horizontal_line([V || {_K, V} <- Widths]),
              format_table([{?PID_HEADING, PidWidth, ""},
                            {?STATE_HEADING, StateWidth, ""},
                            {?STARTED_AT_HEADING, StartedAtWidth, ""},
                            {?ENDED_AT_HEADING, EndedAtWidth, ""},
-                           {?WALL_CLOCK_US_HEADING, WallclockWidth, ""},
+                           {?WALL_CLOCK_US_HEADING, WallClockWidth, ""},
                            {?CODE_HEADING, CodeWidth, ""},
                            {?PATH_HEADING, PathWidth, ""},
                            {?QUERY_STRING_HEADING, QueryWidth, ""}]),
-             horizontal_line(Widths)],
-    WidthRecord = #server_status{pid = PidWidth,
-                                 state = StateWidth,
-                                 started_at = StartedAtWidth,
-                                 ended_at = EndedAtWidth,
-                                 wall_clock_us = WallclockWidth,
-                                 code = CodeWidth,
-                                 path = PathWidth,
-                                 query_string = QueryWidth},
-    Lines2 = [format_process(S, WidthRecord) || S <- Workers2],
-    Lines3 = Lines ++ Lines2 ++ [horizontal_line(Widths)] ++ [""],
+             horizontal_line([V || {_K, V} <- Widths])],
+    Lines2 = [format_process(S, Widths) || S <- Workers2],
+    Lines3 = Lines ++ Lines2 ++ [horizontal_line([V || {_K, V} <- Widths])] ++ [""],
     string:join(Lines3, "\n").
 
 %% SERVER STATUS
