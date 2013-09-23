@@ -1,5 +1,5 @@
 -module(server_status_client).
--export([working/1, done/0]).
+-export([working/1, done/0, clear/0]).
 -export([state_dump/0, text_state_dump/0]).
 -include("include/server_status.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -40,6 +40,9 @@ done() ->
 
 state_dump() ->
     gen_server:call(?WORKER, state_dump).
+
+clear() ->
+    gen_server:call(?WORKER, clear).
 
 flatten_format(Format, Paddings) ->
     lists:flatten(io_lib:format(Format, Paddings)).

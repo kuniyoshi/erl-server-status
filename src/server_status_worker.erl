@@ -19,6 +19,8 @@ init([] = Args) ->
 
 handle_call(state_dump, _From, State) ->
     {reply, State, State};
+handle_call(clear, _From, _State) ->
+    {reply, ok, []};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
