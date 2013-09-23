@@ -7,11 +7,18 @@ SYNOPSIS
 ========
 
     > application:start(server_status).
+    ok
     > server_status_client:working([{path, <<"/index.html">>},
                                     {query_string, <<>>]).
+    ok
     > server_status_client:done().
+    ok
+    > server_status_client:done_with(200).
+    ok
     > server_status_client:state_dump().
+    ...
     > io:put_chars(server_status_client:text_state_dump()).
+    ...
 
 GOAL
 ====
