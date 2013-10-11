@@ -27,18 +27,13 @@ handle_call(_Request, _From, Workers) ->
 handle_cast({working, Pid, Worker}, Workers) ->
     Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker}),
     {noreply, Workers2};
-handle_cast({done, Pid}, Workers) ->
+handle_cast({done, {with, Code}, {at, Time}, Pid}, Workers) ->
     Worker = proplists:get_value(Pid, Workers),
-    Now = now(),
+    StartedAt = Worker#server_status.started_at,
     Worker2 = Worker#server_status{state = done,
-                                   ended_at = Now,
-                                   wall_clock_us = timer:now_diff(Now,
-                                                                  Worker#server_status.started_at)},
-    Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker2}),
-    {noreply, Workers2};
-handle_cast({done_with, Code, Pid}, Workers) ->
-    Worker = proplists:get_value(Pid, Workers),
-    Worker2 = Worker#server_status{code = Code},
+                                   ended_at = Time,
+                                   wall_clock_us = timer:now_diff(Time, StartedAt),
+                                   code = Code},
     Workers2 = lists:keystore(Pid, 1, Workers, {Pid, Worker2}),
     {noreply, Workers2}.
 

@@ -1,3 +1,7 @@
 
+vsn 2   Sat Oct 12 01:47:05 JST 2013
+    improve done cast.
+      - server status should have code when it quite
+      - stop watch should stop when get cast, not at dequeue time
 vsn 1   Fri Sep 20 01:31:04 JST 2013
     first ver.

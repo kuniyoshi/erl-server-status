@@ -1,5 +1,5 @@
 -module(server_status_client).
--export([working/1, done/0, done_with/1, clear/0]).
+-export([working/1, done/1, done/2, clear/0]).
 -export([my_state/0, started_at/1, wall_clock_us/1, code/1]).
 -export([state_dump/0, text_state_dump/0]).
 -include("include/server_status.hrl").
@@ -28,12 +28,15 @@ working([{path, Path}, {query_string, QueryString}]) ->
                             query_string = QueryString},
     gen_server:cast(?WORKER, {working, Worker#server_status.pid, Worker}).
 
-done() ->
-    gen_server:cast(?WORKER, {done, self()}).
+done(Code) ->
+    done({with, Code}, {at, now()}).
 
-done_with(Code) ->
-    done(),
-    gen_server:cast(?WORKER, {done_with, Code, self()}).
+done({with, _Code} = With, {at, _Time} = At) ->
+    gen_server:cast(?WORKER, {done, With, At, self()});
+done({at, _Time} = At, {with, _Code} = With) ->
+    gen_server:cast(?WORKER, {done, With, At, self()});
+done(Code, Time) when is_integer(Code) andalso is_tuple(Time) ->
+    gen_server:cast(?WORKER, {done, {with, Code}, {at, Time}, self()}).
 
 state_dump() ->
     gen_server:call(?WORKER, state_dump).
