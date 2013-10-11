@@ -20,10 +20,12 @@
 
 %% -compile(export_all).
 
-working([{path, Path}, {query_string, QueryString}]) ->
+working([{path, _Path} = Path, {query_string, _QueryString} = Qs]) ->
+    working([Path, Qs, {started_at, now()}]);
+working([{path, Path}, {query_string, QueryString}, {started_at, StartedAt}]) ->
     Worker = #server_status{pid = self(),
                             state = working,
-                            started_at = now(),
+                            started_at = StartedAt,
                             path = Path,
                             query_string = QueryString},
     gen_server:cast(?WORKER, {working, Worker#server_status.pid, Worker}).
