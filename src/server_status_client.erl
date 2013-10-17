@@ -1,44 +1,27 @@
 -module(server_status_client).
--export([working/1, done/1, done/2, clear/0]).
--export([my_state/0, started_at/1, wall_clock_us/1, code/1]).
+-export([working/1, done/0, clear/0]).
 -export([state_dump/0, text_state_dump/0]).
 -include("include/server_status.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -define(WORKER, server_status_worker).
--define(NUM_WIDTH, 32).
+-define(NUM_WIDTH, 12).
 -define(PID_HEADING, "PID").
--define(STATE_HEADING, "State").
 -define(STARTED_AT_HEADING, "Started at").
--define(ENDED_AT_HEADING, "Ended at").
 -define(WALL_CLOCK_US_HEADING, "Wall clock [s]").
--define(HOST_HEADING, "Host").
--define(CODE_HEADING, "Code").
--define(PORT_HEADING, "Port").
--define(HOST_PORT_HEADING, "Host:Port").
 -define(PATH_HEADING, "Path").
 -define(QUERY_STRING_HEADING, "Query String").
-
-%% -compile(export_all).
 
 working([{path, _Path} = Path, {query_string, _QueryString} = Qs]) ->
     working([Path, Qs, {started_at, now()}]);
 working([{path, Path}, {query_string, QueryString}, {started_at, StartedAt}]) ->
     Worker = #server_status{pid = self(),
-                            state = working,
                             started_at = StartedAt,
                             path = Path,
                             query_string = QueryString},
     gen_server:cast(?WORKER, {working, Worker#server_status.pid, Worker}).
 
-done(Code) ->
-    done({with, Code}, {at, now()}).
-
-done({with, _Code} = With, {at, _Time} = At) ->
-    gen_server:cast(?WORKER, {done, With, At, self()});
-done({at, _Time} = At, {with, _Code} = With) ->
-    gen_server:cast(?WORKER, {done, With, At, self()});
-done(Code, Time) when is_integer(Code) andalso is_tuple(Time) ->
-    gen_server:cast(?WORKER, {done, {with, Code}, {at, Time}, self()}).
+done() ->
+    gen_server:cast(?WORKER, {done, self()}).
 
 state_dump() ->
     gen_server:call(?WORKER, state_dump).
@@ -46,24 +29,12 @@ state_dump() ->
 clear() ->
     gen_server:call(?WORKER, clear).
 
-my_state() ->
-    Workers = state_dump(),
-    Worker = proplists:get_value(self(), Workers),
-    Worker.
-
-started_at(Worker)      -> get_field(started_at, Worker).
-wall_clock_us(Worker)   -> get_field(wall_clock_us, Worker).
-code(Worker)            -> get_field(code, Worker).
-
 flatten_format(Format, Paddings) ->
     lists:flatten(io_lib:format(Format, Paddings)).
 
 get_field(pid,              #server_status{pid = R})            -> R;
-get_field(state,            #server_status{state = R})          -> R;
 get_field(started_at,       #server_status{started_at = R})     -> R;
-get_field(ended_at,         #server_status{ended_at = R})       -> R;
 get_field(wall_clock_us,    #server_status{wall_clock_us = R})  -> R;
-get_field(code,             #server_status{code = R})           -> R;
 get_field(path,             #server_status{path = R})           -> R;
 get_field(query_string,     #server_status{query_string = R})   -> R.
 
@@ -92,16 +63,10 @@ to_string(undefined, _Field) ->
     "undefined";
 to_string(Pid, pid) ->
     pid_to_list(Pid);
-to_string(State, state) ->
-    atom_to_list(State);
 to_string(StartedAt, started_at) ->
     now_to_time(StartedAt);
-to_string(EndedAt, ended_at) ->
-    now_to_time(EndedAt);
 to_string(WallClockUs, wall_clock_us) ->
     flatten_format("~6.2. f", [WallClockUs / 1.0E6]);
-to_string(Code, code) ->
-    integer_to_list(Code);
 to_string(Path, path) ->
     binary_to_list(Path);
 to_string(QueryString, query_string) ->
@@ -115,23 +80,11 @@ get_int_format(MaxWidth) ->
     Format = flatten_format("~~.~w. s~~~w.2. w", [?NUM_WIDTH, MaxWidth]),
     Format.
 
-format_count_summary(count_of_all, Count, MaxWidth) ->
-    Defininition = "- count of all processes: ",
+format_count_summary(count, Count, MaxWidth) ->
+    Defininition = "- count: ",
     flatten_format(get_int_format(MaxWidth), [Defininition, Count]);
-format_count_summary(count_of_working, Count, MaxWidth) ->
-    Defininition = "- count of working: ",
-    flatten_format(get_int_format(MaxWidth), [Defininition, Count]);
-format_count_summary(count_of_waiting, Count, MaxWidth) ->
-    Defininition = "- count of waiting: ",
-    flatten_format(get_int_format(MaxWidth), [Defininition, Count]);
-format_count_summary(mean_of_working, Count, MaxWidth) ->
-    Defininition = "- mean of working: ",
-    flatten_format(get_float_format(MaxWidth), [Defininition, Count]);
-format_count_summary(mean_of_worked, Count, MaxWidth) ->
-    Defininition = "- mean of worked: ",
-    flatten_format(get_float_format(MaxWidth), [Defininition, Count]);
-format_count_summary(mean_of_both, Count, MaxWidth) ->
-    Defininition = "- mean of both: ",
+format_count_summary(mean, Count, MaxWidth) ->
+    Defininition = "- mean: ",
     flatten_format(get_float_format(MaxWidth), [Defininition, Count]).
 
 horizontal_line(L) ->
@@ -160,43 +113,23 @@ text_state_dump() ->
     Workers = [W || {_Pid, W} <- state_dump()],
     Now = now(),
     Localtime = now_to_local_time(Now),
-    CountOfAll = length(Workers),
-    CountOfWorking = length([S || S <- Workers, S#server_status.state =:= working]),
-    CountOfWaiting = length([S || S <- Workers, S#server_status.state =:= done])
-                     + length([S || S <- Workers, S#server_status.state =:= undefined]),
-    Workers2 = lists:map(fun(#server_status{state = working} = S) ->
-                            S#server_status{wall_clock_us = timer:now_diff(Now, S#server_status.started_at)};
-                        (S) ->
-                            S
-                        end,
-                        Workers),
-    MeanOfWorking = calc_mean([S#server_status.wall_clock_us
-                               || S <- Workers2, S#server_status.state =:= working]),
-    WorkingMeanSeconds = MeanOfWorking / 1.0E6,
-    MeanOfWorked = calc_mean([S#server_status.wall_clock_us
-                              || S <- Workers2, S#server_status.state =:= done]),
-    WorkedMeanSeconds = MeanOfWorked / 1.0E6,
-    MeanOfBoth = calc_mean([X || X <- [MeanOfWorking, MeanOfWorked], X > 0]),
-    BothMeanSeconds = MeanOfBoth / 1.0E6,
+    Count = length(Workers),
+    Workers2 = [S#server_status{wall_clock_us = timer:now_diff(Now, S#server_status.started_at)}
+                || S <- Workers],
+    Mean = calc_mean([S#server_status.wall_clock_us || S <- Workers2]),
+    MeanSeconds = Mean / 1.0E6,
     PidWidth = lists:max([length(X)
                           || X <- [?PID_HEADING | [to_string(P, pid) || #server_status{pid = P} <- Workers2]]]),
-    StateWidth = lists:max([length(X)
-                            || X <- [?STATE_HEADING | ["working", "done", "undefined"]]]),
     StartedAtWidth = lists:max([length(?STARTED_AT_HEADING), length(to_string(Now, started_at))]),
-    EndedAtWidth = lists:max([length(?ENDED_AT_HEADING), length(to_string(Now, ended_at))]),
     WallClockWidth = length(?WALL_CLOCK_US_HEADING), % Wall clock heading is always longer than body.
-    CodeWidth = lists:max([length(?CODE_HEADING), length("undefined")]),
     PathWidth = lists:max([length(X)
                            || X <- [?PATH_HEADING | [to_string(P, path) || #server_status{path = P} <- Workers2]]]),
     QueryWidth = lists:max([length(X)
                             || X <- [?QUERY_STRING_HEADING | [to_string(Q, query_string) || #server_status{query_string = Q} <- Workers2]]]),
     CountWidth = 6,
     Widths = [{pid, PidWidth},
-              {state, StateWidth},
               {started_at, StartedAtWidth},
-              {ended_at, EndedAtWidth},
               {wall_clock_us, WallClockWidth},
-              {code, CodeWidth},
               {path, PathWidth},
               {query_string, QueryWidth}],
     Lines = ["SERVER STATUS",
@@ -207,23 +140,16 @@ text_state_dump() ->
              "SUMMARY",
              string:copies("=", length("SUMMARY")),
              "",
-             format_count_summary(count_of_all, CountOfAll, CountWidth),
-             format_count_summary(count_of_working, CountOfWorking, CountWidth),
-             format_count_summary(count_of_waiting, CountOfWaiting, CountWidth),
-             format_count_summary(mean_of_working, WorkingMeanSeconds, CountWidth),
-             format_count_summary(mean_of_worked, WorkedMeanSeconds, CountWidth),
-             format_count_summary(mean_of_both, BothMeanSeconds, CountWidth),
+             format_count_summary(count, Count, CountWidth),
+             format_count_summary(mean, MeanSeconds, CountWidth),
              "",
              "LIST PROCESSES",
              string:copies("=", length("LIST PROCESSES")),
              "",
              horizontal_line([V || {_K, V} <- Widths]),
              format_table([{?PID_HEADING, PidWidth, ""},
-                           {?STATE_HEADING, StateWidth, ""},
                            {?STARTED_AT_HEADING, StartedAtWidth, ""},
-                           {?ENDED_AT_HEADING, EndedAtWidth, ""},
                            {?WALL_CLOCK_US_HEADING, WallClockWidth, ""},
-                           {?CODE_HEADING, CodeWidth, ""},
                            {?PATH_HEADING, PathWidth, ""},
                            {?QUERY_STRING_HEADING, QueryWidth, ""}]),
              horizontal_line([V || {_K, V} <- Widths])],
@@ -233,26 +159,20 @@ text_state_dump() ->
 
 %% SERVER STATUS
 %% =============
-%%
-%% Dumped at {{ local_time }}.
-%%
+%% 
+%% Dumped at 2013-10-17 2:58:26
+%% 
 %% SUMMARY
 %% =======
-%%
-%% - count of all processes: {{ count_of_all }}
-%% - count of working: {{ count_of_working }}
-%% - count of waiting: {{ count_of_waiting }}
-%% - mean of working: {{ mean_of_working }}
-%% - mean of worked: {{ mean_of_worked }}
-%% - mean of both: {{ mean_of_both }}
-%%
+%% 
+%% - count:     1
+%% - mean:   2.56
+%% 
 %% LIST PROCESSES
 %% ==============
-%%
-%% |----------+-----------+------------+----------+----------------+-----------+-------------+--------------|
-%% | PID      | State     | Started at | Ended at | Wall clock [s] | Code      | Path        | Query String |
-%% |----------+-----------+------------+----------+----------------+-----------+-------------+--------------|
-%% | <0.32.0> | working   |  0:55: 8   | undefine |         ****** | undefined | /index.html | ?foo         |
-%% | <0.47.0> | working   |  0:56:47   | undefine |         ****** | undefined | /index.html | ?foo         |
-%% | <0.52.0> | done      |  0:57:14   |  0:57:48 |          34.23 |       404 | /index.html | ?foo         |
-%% |----------+-----------+------------+----------+----------------+-----------+-------------+--------------|
+%% 
+%% |----------+------------+----------------+------------+--------------|
+%% | PID      | Started at | Wall clock [s] | Path       | Query String |
+%% |----------+------------+----------------+------------+--------------|
+%% | <0.32.0> |  2:58:24   |           2.56 | fooooooooo | ?bar=baz     |
+%% |----------+------------+----------------+------------+--------------|
