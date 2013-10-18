@@ -8,14 +8,18 @@
 -define(PID_HEADING, "PID").
 -define(STARTED_AT_HEADING, "Started at").
 -define(WALL_CLOCK_US_HEADING, "Wall clock [s]").
+-define(METHOD_HEADING, "Method").
 -define(PATH_HEADING, "Path").
 -define(QUERY_STRING_HEADING, "Query String").
 
-working([{path, _Path} = Path, {query_string, _QueryString} = Qs]) ->
-    working([Path, Qs, {started_at, now()}]);
-working([{path, Path}, {query_string, QueryString}, {started_at, StartedAt}]) ->
+working(Props) ->
+    Method = proplists:get_value(method, Props),
+    Path = proplists:get_value(path, Props),
+    QueryString = proplists:get_value(query_string, Props),
+    StartedAt = proplists:get_value(started_at, Props, now()),
     Worker = #server_status{pid = self(),
                             started_at = StartedAt,
+                            method = Method,
                             path = Path,
                             query_string = QueryString},
     gen_server:cast(?WORKER, {working, Worker#server_status.pid, Worker}).
@@ -23,11 +27,11 @@ working([{path, Path}, {query_string, QueryString}, {started_at, StartedAt}]) ->
 done() ->
     gen_server:cast(?WORKER, {done, self()}).
 
-state_dump() ->
-    gen_server:call(?WORKER, state_dump).
-
 clear() ->
     gen_server:call(?WORKER, clear).
+
+state_dump() ->
+    gen_server:call(?WORKER, state_dump).
 
 flatten_format(Format, Paddings) ->
     lists:flatten(io_lib:format(Format, Paddings)).
@@ -35,6 +39,7 @@ flatten_format(Format, Paddings) ->
 get_field(pid,              #server_status{pid = R})            -> R;
 get_field(started_at,       #server_status{started_at = R})     -> R;
 get_field(wall_clock_us,    #server_status{wall_clock_us = R})  -> R;
+get_field(method,           #server_status{method = R})         -> R;
 get_field(path,             #server_status{path = R})           -> R;
 get_field(query_string,     #server_status{query_string = R})   -> R.
 
@@ -67,6 +72,8 @@ to_string(StartedAt, started_at) ->
     now_to_time(StartedAt);
 to_string(WallClockUs, wall_clock_us) ->
     flatten_format("~6.2. f", [WallClockUs / 1.0E6]);
+to_string(Method, method) ->
+    binary_to_list(Method);
 to_string(Path, path) ->
     binary_to_list(Path);
 to_string(QueryString, query_string) ->
@@ -122,6 +129,8 @@ text_state_dump() ->
                           || X <- [?PID_HEADING | [to_string(P, pid) || #server_status{pid = P} <- Workers2]]]),
     StartedAtWidth = lists:max([length(?STARTED_AT_HEADING), length(to_string(Now, started_at))]),
     WallClockWidth = length(?WALL_CLOCK_US_HEADING), % Wall clock heading is always longer than body.
+    MethodWidth = lists:max([length(X)
+                             || X <- [?METHOD_HEADING | [to_string(M, method) || #server_status{method = M} <- Workers2]]]),
     PathWidth = lists:max([length(X)
                            || X <- [?PATH_HEADING | [to_string(P, path) || #server_status{path = P} <- Workers2]]]),
     QueryWidth = lists:max([length(X)
@@ -130,6 +139,7 @@ text_state_dump() ->
     Widths = [{pid, PidWidth},
               {started_at, StartedAtWidth},
               {wall_clock_us, WallClockWidth},
+              {method, MethodWidth},
               {path, PathWidth},
               {query_string, QueryWidth}],
     Lines = ["SERVER STATUS",
@@ -150,6 +160,7 @@ text_state_dump() ->
              format_table([{?PID_HEADING, PidWidth, ""},
                            {?STARTED_AT_HEADING, StartedAtWidth, ""},
                            {?WALL_CLOCK_US_HEADING, WallClockWidth, ""},
+                           {?METHOD_HEADING, MethodWidth, ""},
                            {?PATH_HEADING, PathWidth, ""},
                            {?QUERY_STRING_HEADING, QueryWidth, ""}]),
              horizontal_line([V || {_K, V} <- Widths])],
@@ -160,19 +171,19 @@ text_state_dump() ->
 %% SERVER STATUS
 %% =============
 %% 
-%% Dumped at 2013-10-17 2:58:26
+%% Dumped at 2013-10-19 1:1:41
 %% 
 %% SUMMARY
 %% =======
 %% 
-%% - count:     1
-%% - mean:   2.56
+%% - count:         1
+%% - mean:      19.07
 %% 
 %% LIST PROCESSES
 %% ==============
 %% 
-%% |----------+------------+----------------+------------+--------------|
-%% | PID      | Started at | Wall clock [s] | Path       | Query String |
-%% |----------+------------+----------------+------------+--------------|
-%% | <0.32.0> |  2:58:24   |           2.56 | fooooooooo | ?bar=baz     |
-%% |----------+------------+----------------+------------+--------------|
+%% |----------+------------+----------------+--------+------+--------------|
+%% | PID      | Started at | Wall clock [s] | Method | Path | Query String |
+%% |----------+------------+----------------+--------+------+--------------|
+%% | <0.55.0> |  1: 1:22   |          19.07 | GET    | /foo | ?foo=bar     |
+%% |----------+------------+----------------+--------+------+--------------|

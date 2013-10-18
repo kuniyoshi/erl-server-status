@@ -1,4 +1,6 @@
 
+vsn 4   Sat Oct 19 01:02:49 JST 2013
+    Add `method` property.
 vsn 3   Sat Oct 12 01:58:54 JST 2013
     started_at can specify.
 vsn 2   Sat Oct 12 01:47:05 JST 2013
