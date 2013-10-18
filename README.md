@@ -8,8 +8,8 @@ SYNOPSIS
 
     > ok = application:start(server_status).
     > ok = server_status_client:working([{method, <<"GET">>},
-                                         {path, <<"/index.html">>},
-                                         {query_string, <<>>}]).
+                                         {path, <<"/foo">>},
+                                         {query_string, <<"?foo=bar">>}]).
     > ok = server_status_client:done().
     > server_status_client:state_dump().
     ...
