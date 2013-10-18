@@ -4,7 +4,7 @@
 -include("include/server_status.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -define(WORKER, server_status_worker).
--define(NUM_WIDTH, 12).
+-define(NUM_WIDTH, 16).
 -define(PID_HEADING, "PID").
 -define(STARTED_AT_HEADING, "Started at").
 -define(WALL_CLOCK_US_HEADING, "Wall clock [s]").
@@ -84,7 +84,7 @@ get_float_format(MaxWidth) ->
     Format.
 
 get_int_format(MaxWidth) ->
-    Format = flatten_format("~~.~w. s~~~w.2. w", [?NUM_WIDTH, MaxWidth]),
+    Format = flatten_format("~~.~w. s~~~w.~w. w", [?NUM_WIDTH, MaxWidth, MaxWidth]),
     Format.
 
 format_count_summary(count, Count, MaxWidth) ->
@@ -135,7 +135,7 @@ text_state_dump() ->
                            || X <- [?PATH_HEADING | [to_string(P, path) || #server_status{path = P} <- Workers2]]]),
     QueryWidth = lists:max([length(X)
                             || X <- [?QUERY_STRING_HEADING | [to_string(Q, query_string) || #server_status{query_string = Q} <- Workers2]]]),
-    CountWidth = 6,
+    CountWidth = 9,
     Widths = [{pid, PidWidth},
               {started_at, StartedAtWidth},
               {wall_clock_us, WallClockWidth},
