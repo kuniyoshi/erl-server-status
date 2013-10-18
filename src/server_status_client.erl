@@ -167,23 +167,3 @@ text_state_dump() ->
     Lines2 = [format_process(S, Widths) || S <- Workers2],
     Lines3 = Lines ++ Lines2 ++ [horizontal_line([V || {_K, V} <- Widths])] ++ [""],
     string:join(Lines3, "\n").
-
-%% SERVER STATUS
-%% =============
-%% 
-%% Dumped at 2013-10-19 1:1:41
-%% 
-%% SUMMARY
-%% =======
-%% 
-%% - count:         1
-%% - mean:      19.07
-%% 
-%% LIST PROCESSES
-%% ==============
-%% 
-%% |----------+------------+----------------+--------+------+--------------|
-%% | PID      | Started at | Wall clock [s] | Method | Path | Query String |
-%% |----------+------------+----------------+--------+------+--------------|
-%% | <0.55.0> |  1: 1:22   |          19.07 | GET    | /foo | ?foo=bar     |
-%% |----------+------------+----------------+--------+------+--------------|
